@@ -21,12 +21,14 @@ app.use((req, res, next) => {
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/rooms', require('./routes/rooms'));
 app.use('/api/reservations', require('./routes/reservations'));
+app.use('/api/users', require('./routes/users'));
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
 // Serve React build in production
 const clientDist = path.join(__dirname, '../client/dist');
 app.use(express.static(clientDist));
 app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) return res.status(404).json({ error: 'Not found' });
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 

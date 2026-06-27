@@ -22,7 +22,11 @@ router.post('/register', async (req, res) => {
       VALUES (${name}, ${email}, ${hash})
       RETURNING id, name, email, role, created_at
     `;
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
     res.status(201).json({ user, token });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Email already in use' });
@@ -40,7 +44,11 @@ router.post('/login', async (req, res) => {
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
-  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign(
+    { id: user.id, email: user.email, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
   const { password_hash, ...safeUser } = user;
   res.json({ user: safeUser, token });
 });
@@ -50,6 +58,49 @@ router.get('/me', authenticate, async (req, res) => {
   const [user] = await sql`SELECT id, name, email, role, created_at FROM users WHERE id = ${req.user.id}`;
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json(user);
+});
+
+// PATCH /auth/me — update name and/or password
+router.patch('/me', authenticate, async (req, res) => {
+  const { name, current_password, new_password } = req.body;
+
+  const [user] = await sql`SELECT * FROM users WHERE id = ${req.user.id}`;
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  let updates = {};
+
+  if (name && name.trim()) {
+    updates.name = name.trim();
+  }
+
+  if (new_password) {
+    if (!current_password) {
+      return res.status(400).json({ error: 'current_password is required to set a new password' });
+    }
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+    const valid = await bcrypt.compare(current_password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    updates.password_hash = await bcrypt.hash(new_password, 10);
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: 'Nothing to update' });
+  }
+
+  const newName = updates.name ?? user.name;
+  const newHash = updates.password_hash ?? user.password_hash;
+
+  const [updated] = await sql`
+    UPDATE users SET name = ${newName}, password_hash = ${newHash}
+    WHERE id = ${req.user.id}
+    RETURNING id, name, email, role, created_at
+  `;
+
+  res.json(updated);
 });
 
 module.exports = router;

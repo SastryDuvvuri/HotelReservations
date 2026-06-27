@@ -7,6 +7,7 @@ import Rooms from './pages/Rooms';
 import BookRoom from './pages/BookRoom';
 import MyReservations from './pages/MyReservations';
 import Admin from './pages/Admin';
+import Profile from './pages/Profile';
 
 function PrivateRoute({ children, adminOnly }) {
   const { user, loading } = useAuth();
@@ -31,6 +32,9 @@ export default function App() {
           } />
           <Route path="/reservations" element={
             <PrivateRoute><MyReservations /></PrivateRoute>
+          } />
+          <Route path="/profile" element={
+            <PrivateRoute><Profile /></PrivateRoute>
           } />
           <Route path="/admin" element={
             <PrivateRoute adminOnly><Admin /></PrivateRoute>

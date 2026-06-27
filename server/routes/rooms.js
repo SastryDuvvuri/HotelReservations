@@ -1,35 +1,73 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { sql } = require('../db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /rooms — list available rooms (optionally filter by dates)
+function isAdminRequest(req) {
+  try {
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) return false;
+    const decoded = jwt.verify(header.slice(7), process.env.JWT_SECRET);
+    return decoded.role === 'admin';
+  } catch {
+    return false;
+  }
+}
+
+// GET /rooms — guests see active rooms; admins with ?include_inactive=true see all
 router.get('/', async (req, res) => {
   const { check_in, check_out, type } = req.query;
+  const includeInactive = req.query.include_inactive === 'true' && isAdminRequest(req);
+  const typeFilter = type || null;
 
   let rooms;
+
   if (check_in && check_out) {
-    rooms = await sql`
-      SELECT r.* FROM rooms r
-      WHERE r.is_active = TRUE
-        AND (${type} IS NULL OR r.type = ${type})
-        AND r.id NOT IN (
-          SELECT room_id FROM reservations
-          WHERE status != 'cancelled'
-            AND check_in < ${check_out}
-            AND check_out > ${check_in}
-        )
-      ORDER BY r.price_per_night
-    `;
+    if (includeInactive) {
+      rooms = await sql`
+        SELECT r.* FROM rooms r
+        WHERE (${typeFilter} IS NULL OR r.type = ${typeFilter})
+          AND r.id NOT IN (
+            SELECT room_id FROM reservations
+            WHERE status != 'cancelled'
+              AND check_in < ${check_out}
+              AND check_out > ${check_in}
+          )
+        ORDER BY r.is_active DESC, r.price_per_night
+      `;
+    } else {
+      rooms = await sql`
+        SELECT r.* FROM rooms r
+        WHERE r.is_active = TRUE
+          AND (${typeFilter} IS NULL OR r.type = ${typeFilter})
+          AND r.id NOT IN (
+            SELECT room_id FROM reservations
+            WHERE status != 'cancelled'
+              AND check_in < ${check_out}
+              AND check_out > ${check_in}
+          )
+        ORDER BY r.price_per_night
+      `;
+    }
   } else {
-    rooms = await sql`
-      SELECT * FROM rooms
-      WHERE is_active = TRUE
-        AND (${type ?? null} IS NULL OR type = ${type ?? null})
-      ORDER BY price_per_night
-    `;
+    if (includeInactive) {
+      rooms = await sql`
+        SELECT * FROM rooms
+        WHERE (${typeFilter} IS NULL OR type = ${typeFilter})
+        ORDER BY is_active DESC, price_per_night
+      `;
+    } else {
+      rooms = await sql`
+        SELECT * FROM rooms
+        WHERE is_active = TRUE
+          AND (${typeFilter} IS NULL OR type = ${typeFilter})
+        ORDER BY price_per_night
+      `;
+    }
   }
+
   res.json(rooms);
 });
 
@@ -76,7 +114,16 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
   res.json(room);
 });
 
-// DELETE /rooms/:id — admin only
+// PATCH /rooms/:id/toggle — admin only (toggle active/inactive)
+router.patch('/:id/toggle', authenticate, requireAdmin, async (req, res) => {
+  const [room] = await sql`
+    UPDATE rooms SET is_active = NOT is_active WHERE id = ${req.params.id} RETURNING *
+  `;
+  if (!room) return res.status(404).json({ error: 'Room not found' });
+  res.json(room);
+});
+
+// DELETE /rooms/:id — admin only (soft delete / deactivate)
 router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
   const [room] = await sql`UPDATE rooms SET is_active = FALSE WHERE id = ${req.params.id} RETURNING id`;
   if (!room) return res.status(404).json({ error: 'Room not found' });
