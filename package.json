@@ -1,0 +1,24 @@
+{
+  "name": "hotel-reservation",
+  "version": "1.0.0",
+  "description": "Hotel room reservation — full-stack Node.js + React + Neon PostgreSQL",
+  "scripts": {
+    "install:all": "npm install && cd client && npm install",
+    "dev": "node -e \"require('child_process').spawn('npm',['run','dev:server'],{stdio:'inherit',shell:true})\" & cd client && npm run dev",
+    "dev:server": "nodemon server/index.js",
+    "build": "cd client && npm run build",
+    "start": "node server/index.js",
+    "seed": "node server/seed.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.9.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.3"
+  }
+}
